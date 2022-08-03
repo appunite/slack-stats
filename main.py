@@ -1,7 +1,9 @@
 import logging
 import os
+import sys
 from datetime import datetime, timedelta
 import json
+import argparse
 
 no_days = 30
 
@@ -63,9 +65,10 @@ all_channels = [
 ]
 
 
-class Xyz:
-    def __init__(self, client):
+class SlackStatsCalculator:
+    def __init__(self, client, dry_run):
         self.client = client
+        self.dry_run = dry_run
 
     def _find_conversation_id(self, channel_name):
         for result in self.client.conversations_list():
@@ -97,12 +100,13 @@ class Xyz:
             conversation_history = result["messages"]
 
             for message in conversation_history:
-                if "subtype" in message:
-                    logger.debug(f"Skipping message: {json.dumps(message)}")
-                    continue
-                logger.debug(f"Counting message: {json.dumps(message)}")
-                stats.questions += 1
-                stats.add_message(message["user"])
+                if "subtype" in message or "bot_id" in message:
+                    logger.debug(f"Skipping message: {message['text']}: {json.dumps(message)}")
+                else:
+                    logger.debug(f"Counting message: {message['text']}: {json.dumps(message)}")
+                    stats.questions += 1
+                    stats.add_message(message["user"])
+
                 if "reply_users" in message:
                     stats.add_messages(message["reply_users"])
                 if "reply_count" in message:
@@ -156,9 +160,10 @@ _Pamiętajcie, by pisać :writing_hand::skin-tone-5: i dodawać emoji :upside_do
         # message_channel = 'GCQ4KBS11'
         message = self.prepare_message(root_channel)
         logger.info(message)
-        self.client.chat_postMessage(channel=message_channel, text=message)
+        if not self.dry_run:
+            self.client.chat_postMessage(channel=message_channel, text=message)
 
-    def do_action(self):
+    def calculate(self):
         self.post('ios-talks')
         self.post('flutter-talks')
         self.post('android-talks')
@@ -166,9 +171,18 @@ _Pamiętajcie, by pisać :writing_hand::skin-tone-5: i dodawać emoji :upside_do
 
 
 def do_action():
-    client = WebClient(token=os.environ.get('SLACK_BOT_TOKEN'))
-    action = Xyz(client)
-    action.do_action()
+    parser = argparse.ArgumentParser(description='Process stats')
+    parser.add_argument('--dry-run', dest='dry_run', action='store_const',
+                        const=True, default=False,
+                        help='Set the dry run, without posting')
+    args = parser.parse_args()
+    auth_token = os.environ.get('SLACK_BOT_TOKEN')
+    if not auth_token:
+        sys.stderr.write('You need to provide SLACK_BOT_TOKEN environment variable\n')
+        sys.exit(1)
+    client = WebClient(token=auth_token)
+    calculator = SlackStatsCalculator(client, args.dry_run)
+    calculator.calculate()
 
 
 if __name__ == '__main__':
