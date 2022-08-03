@@ -61,7 +61,8 @@ all_channels = [
     Channel('android-talks', ':android:'),
     Channel('ios-talks', ':apple:'),
     Channel('flutter-talks', ':flutter:'),
-    Channel('frontend-talks', ':spider_web:')
+    Channel('frontend-talks', ':spider_web:'),
+    Channel('backend-talks', ':cloud:'),
 ]
 
 
@@ -164,10 +165,8 @@ _Pamiętajcie, by pisać :writing_hand::skin-tone-5: i dodawać emoji :upside_do
             self.client.chat_postMessage(channel=message_channel, text=message)
 
     def calculate(self):
-        self.post('ios-talks')
-        self.post('flutter-talks')
-        self.post('android-talks')
-        self.post('frontend-talks')
+        for channel in all_channels:
+            self.post(channel.channel_name)
 
 
 def do_action():
