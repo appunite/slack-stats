@@ -61,7 +61,8 @@ all_channels = [
     Channel('android-talks', ':android:'),
     Channel('ios-talks', ':apple:'),
     Channel('flutter-talks', ':flutter:'),
-    Channel('frontend-talks', ':spider_web:')
+    Channel('frontend-talks', ':spider_web:'),
+    Channel('phoenix', ':elixir:')
 ]
 
 
