@@ -4,7 +4,10 @@ import sys
 from datetime import datetime, timedelta
 import json
 import argparse
+from slack_sdk import WebClient
 
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger("Stats")
 no_days = 30
 
 
@@ -13,16 +16,11 @@ def start_time():
     return old.timestamp()
 
 
-logging.basicConfig(level=logging.DEBUG)
-from slack_sdk import WebClient
-
-logger = logging.getLogger("Stats")
-
-
 class Channel:
-    def __init__(self, channel_name, icon):
+    def __init__(self, channel_name, icon, post_message):
         self.channel_name = channel_name
         self.icon = icon
+        self.post_message = post_message
 
 
 class UserStat:
@@ -58,11 +56,11 @@ class ChannelStats:
 
 
 all_channels = [
-    Channel('android-talks', ':android:'),
-    Channel('ios-talks', ':apple:'),
-    Channel('flutter-talks', ':flutter:'),
-    Channel('frontend-talks', ':spider_web:'),
-    Channel('backend-talks', ':cloud:'),
+    Channel('android-talks', ':android:', post_message=True),
+    Channel('ios-talks', ':apple:', post_message=True),
+    Channel('flutter-talks', ':flutter:', post_message=True),
+    Channel('frontend-talks', ':spider_web:', post_message=True),
+    Channel('backend-talks', ':cloud:', post_message=False),
 ]
 
 
@@ -78,7 +76,7 @@ class SlackStatsCalculator:
                     return channel["id"]
         raise Exception(f"Not found conversation {channel_name}")
 
-    def _user_stats(self, stats : Stats) -> list[UserStat]:
+    def _user_stats(self, stats: Stats) -> list[UserStat]:
         users = stats.active_users.items()
         users = sorted(users, key=lambda user: user[1], reverse=True)
         result = []
@@ -133,7 +131,8 @@ class SlackStatsCalculator:
             [f"- {format_chanel_stats(x)}" for x in channels_stats if x.channel.channel_name != root_channel])
 
         message = "\n".join(
-            [f" - <@{user.user_id}> ({user.count} :heavy_multiplication_x::memo:)" for user in channel_stat.user_stats[:3]])
+            [f" - <@{user.user_id}> ({user.count} :heavy_multiplication_x::memo:)" for user in
+             channel_stat.user_stats[:3]])
         return f"""
 <!here> *Poniżej :postbox: podsumowanie ostatnich {no_days} dni :calendar::*
 
@@ -142,7 +141,7 @@ Tym razem:
 Dla porównania nasi bracia spłodzili:
 {others_stats}
 
-Na :android: najwięcej napisali:
+Na {channel_stat.channel.icon} najwięcej napisali:
 {message}
 
 _Pamiętajcie, by pisać :writing_hand::skin-tone-5: i dodawać emoji :upside_down_face: pod wiadomościami by piszący nie czuli się samotni :alien:!_
@@ -166,7 +165,8 @@ _Pamiętajcie, by pisać :writing_hand::skin-tone-5: i dodawać emoji :upside_do
 
     def calculate(self):
         for channel in all_channels:
-            self.post(channel.channel_name)
+            if channel.post_message:
+                self.post(channel.channel_name)
 
 
 def do_action():
