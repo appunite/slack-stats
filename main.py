@@ -17,6 +17,12 @@ from slack_sdk import WebClient
 logger = logging.getLogger("Stats")
 
 
+class Channel:
+    def __init__(self, channel_name, icon):
+        self.channel_name = channel_name
+        self.icon = icon
+
+
 class UserStat:
     def __init__(self, user_id, user_name, count):
         self.user_id = user_id
@@ -42,6 +48,21 @@ class Stats:
             self.add_message(user_id)
 
 
+class ChannelStats:
+    def __init__(self, channel: Channel, stats: Stats, user_stats: list[UserStat]):
+        self.channel = channel
+        self.stats = stats
+        self.user_stats = user_stats
+
+
+all_channels = [
+    Channel('android-talks', ':android:'),
+    Channel('ios-talks', ':apple:'),
+    Channel('flutter-talks', ':flutter:'),
+    Channel('frontend-talks', ':spider_web:')
+]
+
+
 class Xyz:
     def __init__(self, client):
         self.client = client
@@ -53,7 +74,7 @@ class Xyz:
                     return channel["id"]
         raise Exception(f"Not found conversation {channel_name}")
 
-    def _user_stats(self, stats):
+    def _user_stats(self, stats : Stats) -> list[UserStat]:
         users = stats.active_users.items()
         users = sorted(users, key=lambda user: user[1], reverse=True)
         result = []
@@ -70,7 +91,7 @@ class Xyz:
             result.append(UserStat(user_id, name, count))
         return result
 
-    def _retrieve_messages(self, channel_id, oldest):
+    def _retrieve_messages(self, channel_id, oldest) -> Stats:
         stats = Stats()
         for result in self.client.conversations_history(channel=channel_id, oldest=oldest):
             conversation_history = result["messages"]
@@ -92,25 +113,29 @@ class Xyz:
                         stats.reactions += reaction["count"]
         return stats
 
-    def prepare_message(self):
+    def prepare_message(self, root_channel: str) -> str:
         oldest = start_time()
         logger.info(f"start: {oldest}")
-        # return
-        stats_android, user_stats_android = self._get_stats("android-talks", oldest)
-        stats_ios, user_stats_ios = self._get_stats('ios-talks', oldest)
-        stats_flutter, user_stats_flutter = self._get_stats('flutter', oldest)
-        stats_web, user_stats_web = self._get_stats('web-frontend', oldest)
+
+        def format_chanel_stats(channel: ChannelStats):
+            return f"{channel.channel.icon} {channel.stats.questions} tematów, {channel.stats.reactions} emoji, i aż {channel.stats.replays} wiadomości"
+
+        channels_stats = [self._get_stats(channel, oldest) for channel in all_channels]
+
+        channel_stat = next(
+            channel_stat for channel_stat in channels_stats if channel_stat.channel.channel_name == root_channel)
+        others_stats = "\n".join(
+            [f"- {format_chanel_stats(x)}" for x in channels_stats if x.channel.channel_name != root_channel])
+
         message = "\n".join(
-            [f" - <@{user.user_id}> ({user.count} :heavy_multiplication_x::memo:)" for user in user_stats_android[:3]])
+            [f" - <@{user.user_id}> ({user.count} :heavy_multiplication_x::memo:)" for user in channel_stat.user_stats[:3]])
         return f"""
 <!here> *Poniżej :postbox: podsumowanie ostatnich {no_days} dni :calendar::*
 
 Tym razem:
-- :android: {stats_android.questions} tematów, {stats_android.reactions} emoji, i aż {stats_android.replays} wiadomości
+- {format_chanel_stats(channel_stat)}
 Dla porównania nasi bracia spłodzili:
-- :apple: {stats_ios.questions} tematów, {stats_ios.reactions} emoji, i aż {stats_ios.replays} wiadomości
-- :flutter: {stats_flutter.questions} tematów, {stats_flutter.reactions} emoji, i aż {stats_flutter.replays} wiadomości
-- :spider_web: {stats_web.questions} tematów, {stats_web.reactions} emoji, i aż {stats_web.replays} wiadomości
+{others_stats}
 
 Na :android: najwięcej napisali:
 {message}
@@ -118,19 +143,26 @@ Na :android: najwięcej napisali:
 _Pamiętajcie, by pisać :writing_hand::skin-tone-5: i dodawać emoji :upside_down_face: pod wiadomościami by piszący nie czuli się samotni :alien:!_
 """
 
-    def _get_stats(self, channel_name, oldest):
-        conversation_id = self._find_conversation_id(channel_name)
+    def _get_stats(self, channel: Channel, oldest):
+        conversation_id = self._find_conversation_id(channel.channel_name)
         logger.info(f"Found conversation ID: {conversation_id}")
         stats = self._retrieve_messages(conversation_id, oldest)
         user_stats = self._user_stats(stats)
-        return stats, user_stats
+        return ChannelStats(channel, stats, user_stats)
 
-    def do_action(self):
-        # message_channel = "GCQ4KBS11"
-        message_channel = self._find_conversation_id("android-talks")
-        message = self.prepare_message()
+    def post(self, root_channel):
+        message_channel = self._find_conversation_id(root_channel)
+        # overwrite channel for testing
+        # message_channel = 'GCQ4KBS11'
+        message = self.prepare_message(root_channel)
         logger.info(message)
         self.client.chat_postMessage(channel=message_channel, text=message)
+
+    def do_action(self):
+        self.post('ios-talks')
+        self.post('flutter-talks')
+        self.post('android-talks')
+        self.post('frontend-talks')
 
 
 def do_action():
