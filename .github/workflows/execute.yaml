@@ -1,0 +1,24 @@
+name: Dry run
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    # Every First day of month at 9:00 UTC
+    - cron: "0 9 1 * *"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - shell: bash
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: python main.py

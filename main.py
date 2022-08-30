@@ -11,20 +11,20 @@ logger = logging.getLogger("Stats")
 no_days = 30
 
 
-def start_time():
+def start_time() -> float:
     old = datetime.today() - timedelta(days=no_days)
     return old.timestamp()
 
 
 class Channel:
-    def __init__(self, channel_name, icon, post_message):
+    def __init__(self, channel_name: str, icon: str, post_message: bool):
         self.channel_name = channel_name
         self.icon = icon
         self.post_message = post_message
 
 
 class UserStat:
-    def __init__(self, user_id, user_name, count):
+    def __init__(self, user_id: str, user_name: str, count: int):
         self.user_id = user_id
         self.user_name = user_name
         self.count = count
@@ -60,16 +60,16 @@ all_channels = [
     Channel('ios-talks', ':apple:', post_message=True),
     Channel('flutter-talks', ':flutter:', post_message=True),
     Channel('frontend-talks', ':spider_web:', post_message=True),
-    Channel('backend-talks', ':cloud:', post_message=False),
+    Channel('elixir-talks', ':cloud:', post_message=False),
 ]
 
 
 class SlackStatsCalculator:
-    def __init__(self, client, dry_run):
+    def __init__(self, client: WebClient, dry_run: bool):
         self.client = client
         self.dry_run = dry_run
 
-    def _find_conversation_id(self, channel_name):
+    def _find_conversation_id(self, channel_name: str) -> str:
         for result in self.client.conversations_list():
             for channel in result["channels"]:
                 if channel["name"] == channel_name:
@@ -93,9 +93,9 @@ class SlackStatsCalculator:
             result.append(UserStat(user_id, name, count))
         return result
 
-    def _retrieve_messages(self, channel_id, oldest) -> Stats:
+    def _retrieve_messages(self, channel_id: str, oldest: float) -> Stats:
         stats = Stats()
-        for result in self.client.conversations_history(channel=channel_id, oldest=oldest):
+        for result in self.client.conversations_history(channel=channel_id, oldest=str(oldest)):
             conversation_history = result["messages"]
 
             for message in conversation_history:
@@ -116,14 +116,9 @@ class SlackStatsCalculator:
                         stats.reactions += reaction["count"]
         return stats
 
-    def prepare_message(self, root_channel: str) -> str:
-        oldest = start_time()
-        logger.info(f"start: {oldest}")
-
+    def prepare_message(self, root_channel: str, channels_stats: list[ChannelStats]) -> str:
         def format_chanel_stats(channel: ChannelStats):
             return f"{channel.channel.icon} {channel.stats.questions} tematów, {channel.stats.reactions} emoji, i aż {channel.stats.replays} wiadomości"
-
-        channels_stats = [self._get_stats(channel, oldest) for channel in all_channels]
 
         channel_stat = next(
             channel_stat for channel_stat in channels_stats if channel_stat.channel.channel_name == root_channel)
@@ -147,26 +142,33 @@ Na {channel_stat.channel.icon} najwięcej napisali:
 _Pamiętajcie, by pisać :writing_hand::skin-tone-5: i dodawać emoji :upside_down_face: pod wiadomościami by piszący nie czuli się samotni :alien:!_
 """
 
-    def _get_stats(self, channel: Channel, oldest):
+    def _get_stats(self, channel: Channel, oldest: float) -> ChannelStats:
         conversation_id = self._find_conversation_id(channel.channel_name)
         logger.info(f"Found conversation ID: {conversation_id}")
         stats = self._retrieve_messages(conversation_id, oldest)
         user_stats = self._user_stats(stats)
         return ChannelStats(channel, stats, user_stats)
 
-    def post(self, root_channel):
-        message_channel = self._find_conversation_id(root_channel)
-        # overwrite channel for testing
-        # message_channel = 'GCQ4KBS11'
-        message = self.prepare_message(root_channel)
+    def get_stats(self) -> list[ChannelStats]:
+        oldest = start_time()
+        logger.info(f"start: {oldest}")
+        channels_stats = [self._get_stats(channel, oldest) for channel in all_channels]
+        return channels_stats
+
+    def post(self, root_channel: str, channels_stats: list[ChannelStats]) -> None:
+        message = self.prepare_message(root_channel, channels_stats)
         logger.info(message)
         if not self.dry_run:
+            message_channel = self._find_conversation_id(root_channel)
+            # overwrite channel for testing
+            # message_channel = 'GCQ4KBS11'
             self.client.chat_postMessage(channel=message_channel, text=message)
 
-    def calculate(self):
+    def calculate(self) -> None:
+        channels_stats = self.get_stats()
         for channel in all_channels:
             if channel.post_message:
-                self.post(channel.channel_name)
+                self.post(channel.channel_name, channels_stats)
 
 
 def do_action():
